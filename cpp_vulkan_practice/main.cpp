@@ -45,6 +45,8 @@ private:
 
     void initVulkan() {
         createInstance();
+        //setupDebugMessenger();
+        pickPhysicalDevice();
     }
 
     void mainLoop() {
@@ -118,6 +120,14 @@ private:
         for (const auto& extension : extensions) {
             std::cout << '\t' << extension.extensionName << '\n';
         }
+
+        // create Vulkan window surface (if needed)
+        
+        //kSurfaceKHR surface;
+        //VkResult err = glfwCreateWindowSurface(instance, window, NULL, &surface);
+        //if (err) {
+        //    std::cout << "Error";
+        //}
     }
 
     bool checkValidationLayerSupport() {
@@ -142,6 +152,35 @@ private:
             }
         }
 
+        return true;
+    }
+
+    void pickPhysicalDevice() {
+        VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+
+        uint32_t deviceCount = 0;
+        vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
+
+        if (deviceCount == 0) { // error if there are no supported devices
+            throw std::runtime_error("No GPUs with Vulkan support found.");
+        }
+
+        std::vector<VkPhysicalDevice> devices(deviceCount);
+        vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
+
+        for (const auto& device : devices) { // check if any physical devices meet the requirements
+            if (isDeviceSuitable(device)) {
+                physicalDevice = device;
+                break;
+            }
+        }
+
+        if (physicalDevice == VK_NULL_HANDLE) { // throw error if there's none
+            throw std::runtime_error("No suitable GPU found.");
+        }
+    }
+
+    bool isDeviceSuitable(VkPhysicalDevice device) { // check if device is suitable
         return true;
     }
 };
