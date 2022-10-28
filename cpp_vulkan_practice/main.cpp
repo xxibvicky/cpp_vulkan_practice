@@ -55,6 +55,7 @@ private:
     VkFormat swapChainImageFormat;
     VkExtent2D swapChainExtent;
     std::vector<VkImageView> swapChainImageViews;
+    VkPipelineLayout pipelineLayout;
 
     void initWindow() {
         glfwInit();
@@ -83,6 +84,8 @@ private:
     }
 
     void cleanup() { // cleaning up ressources once the window is closed
+        vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+
         for (auto imageView : swapChainImageViews) {
             vkDestroyImageView(device, imageView, nullptr);
         }
@@ -607,6 +610,107 @@ return actualExtent;
         dynamic_state_info.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
         dynamic_state_info.pDynamicStates = dynamicStates.data();
 
+        // input assembly
+
+        VkPipelineInputAssemblyStateCreateInfo input_assembly_info = {};
+        input_assembly_info.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+        input_assembly_info.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST; // because we're drawing a triangle (there's more, explained in graphics pipeline -> fixed functions -> input assembly
+        input_assembly_info.primitiveRestartEnable = VK_FALSE; // if set to VK_TRUE: possible to break up lines and triangles in the _STRIP topology modes by using a special index of 0xFFFF or 0xFFFFFFFF
+
+        // viewports and scissors
+
+        VkViewport viewport = {}; // describes the region of the framebuffer that the output will be rendered to, almost always (0, 0) to (width, height)
+        viewport.x = 0.0f;
+        viewport.y = 0.0f;
+        viewport.width = (float)swapChainExtent.width;
+        viewport.height = (float)swapChainExtent.height;
+        viewport.minDepth = 0.0f; // minDepth may be higher than maxDepth
+        viewport.maxDepth = 1.0f; 
+
+        VkRect2D scissor = {}; // scissor rectangles define in which regions pixels will actually be stored
+        scissor.offset = { 0, 0 };
+        scissor.extent = swapChainExtent;
+
+        VkPipelineViewportStateCreateInfo viewport_info = {}; // needs dynamic state enabled (like above)
+        viewport_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+        viewport_info.viewportCount = 1;
+        viewport_info.pViewports = &viewport; // if using multiple viewport and scissor rectangles: reference an array of them
+        viewport_info.scissorCount = 1;
+        viewport_info.pScissors = &scissor;
+
+        // rasterizer
+
+        VkPipelineRasterizationStateCreateInfo rasterizer_info = {};
+        rasterizer_info.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+        rasterizer_info.depthClampEnable = VK_FALSE; // if set to VK_TRUE: fragments that are beyond the near and far planes are clamped to them as opposed to discarding them
+        rasterizer_info.rasterizerDiscardEnable = VK_FALSE; // if set to VK_TRUE: geometry never passes through the rasterizer stage, disables any output to the framebuffer
+        rasterizer_info.polygonMode = VK_POLYGON_MODE_FILL; // determines how fragments are generated for geometry (how vertices are drawn); 3 modes: fill, line, point
+        rasterizer_info.lineWidth = 1.0f; // for higher than 1.0 enable wideLines GPU feature
+        rasterizer_info.cullMode - VK_CULL_MODE_BACK_BIT; // determines the type of face culling to use
+        rasterizer_info.frontFace = VK_FRONT_FACE_CLOCKWISE; // specifies the vertex order for faces to be considered front-facing
+        rasterizer_info.depthBiasEnable = VK_FALSE; // if set to true, this and the following values are used for shadow mapping
+        rasterizer_info.depthBiasConstantFactor = 0.0f;
+        rasterizer_info.depthBiasClamp = 0.0f;
+        rasterizer_info.depthBiasSlopeFactor = 0.0f;
+
+        // multisampling
+
+        VkPipelineMultisampleStateCreateInfo multisample_info = {}; // one of the ways to perform anti-aliasing
+        multisample_info.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+        multisample_info.sampleShadingEnable = VK_FALSE; // multisample is disabled for now
+        multisample_info.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+        multisample_info.minSampleShading - 1.0f;
+        multisample_info.pSampleMask = nullptr;
+        multisample_info.alphaToCoverageEnable = VK_FALSE;
+        multisample_info.alphaToOneEnable = VK_FALSE;
+
+        // depth and stencil testing (not used rn)
+
+        VkPipelineDepthStencilStateCreateInfo depth_stencil_info = {};
+
+        // color blending
+
+        VkPipelineColorBlendAttachmentState color_blend_attachment_info = {}; // contains the configuration per attached framebuffer 
+        color_blend_attachment_info.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+        color_blend_attachment_info.blendEnable = VK_FALSE;
+        color_blend_attachment_info.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+        color_blend_attachment_info.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+        color_blend_attachment_info.colorBlendOp = VK_BLEND_OP_ADD;
+        color_blend_attachment_info.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+        color_blend_attachment_info.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+        color_blend_attachment_info.alphaBlendOp = VK_BLEND_OP_ADD;
+        // possibility for enabled blending: using alpha blending, the new color is blended with the old color based on its opacity
+        //color_blend_attachment_info.blendEnable = VK_TRUE;
+        //color_blend_attachment_info.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+        //color_blend_attachment_info.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        //color_blend_attachment_info.colorBlendOp = VK_BLEND_OP_ADD;
+        //color_blend_attachment_info.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+        //color_blend_attachment_info.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+        //color_blend_attachment_info.alphaBlendOp = VK_BLEND_OP_ADD;
+
+        VkPipelineColorBlendStateCreateInfo color_blend_state_info = {}; // contains the global color blending setting
+        color_blend_state_info.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+        color_blend_state_info.logicOpEnable = VK_FALSE; // if set to VK_TRUE: using method of blending called bitwise combination
+        color_blend_state_info.logicOp = VK_LOGIC_OP_COPY;
+        color_blend_state_info.attachmentCount = 1;
+        color_blend_state_info.pAttachments = &color_blend_attachment_info;
+        color_blend_state_info.blendConstants[0] = 0.0f;
+        color_blend_state_info.blendConstants[1] = 0.0f;
+        color_blend_state_info.blendConstants[2] = 0.0f;
+        color_blend_state_info.blendConstants[3] = 0.0f;
+
+        // pipeline layout
+
+        VkPipelineLayoutCreateInfo pipeline_layout_info = {}; // creating an empty pipeline layout for now
+        pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        pipeline_layout_info.setLayoutCount = 0;
+        pipeline_layout_info.pSetLayouts = nullptr;
+        pipeline_layout_info.pushConstantRangeCount = 0;
+        pipeline_layout_info.pPushConstantRanges = nullptr;
+
+        if (vkCreatePipelineLayout(device, &pipeline_layout_info, nullptr, &pipelineLayout) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create pipeline layout.");
+        }
     }
 
     static std::vector<char> readFile(const std::string& filename) { // reads all of the bytes from the specified file and return them in a byte array managed by std::vector
