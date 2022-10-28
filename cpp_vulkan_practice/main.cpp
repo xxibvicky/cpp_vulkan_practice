@@ -12,6 +12,7 @@
 #include <optional>
 #include <GLFW/glfw3native.h>
 #include <set>
+#include <fstream>
 
 #include <cstdint> // Necessary for uint32_t
 #include <limits> // Necessary for std::numeric_limits
@@ -72,6 +73,7 @@ private:
         createLogicalDevice();
         createSwapChain();
         createImageViews();
+        createGraphicsPipeline();
     }
 
     void mainLoop() {
@@ -131,7 +133,7 @@ private:
 
         createInfo.enabledExtensionCount = glfwExtensionCount;
         createInfo.ppEnabledExtensionNames = glfwExtensions;
-        createInfo.enabledLayerCount = 0;
+        //createInfo.enabledLayerCount = 0;
 
         VkResult result = vkCreateInstance(&createInfo, nullptr, &instance); // pointer to struct with creation info, pointer to custom allocator callbacks, pointer to the new project variable
 
@@ -458,7 +460,7 @@ private:
             actualExtent.width = std::clamp(actualExtent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
             actualExtent.height = std::clamp(actualExtent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
 
-            return actualExtent;
+return actualExtent;
         }
     }
 
@@ -472,7 +474,7 @@ private:
         VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities);
 
         uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1; // recommended to request at least one more image than the minimum
-        
+
         if (swapChainSupport.capabilities.maxImageCount > 0 && imageCount > swapChainSupport.capabilities.maxImageCount) {
             imageCount = swapChainSupport.capabilities.maxImageCount;
         }
@@ -486,7 +488,7 @@ private:
         createInfo.imageExtent = extent;
         createInfo.imageArrayLayers = 1; // always 1 unless you are developing a stereoscopic 3D application
         createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // or VK_IMAGE_USAGE_TRANSFER_DST_BIT
-        
+
         QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
         uint32_t queueFamilyIndices[] = { indices.graphicsFamily.value(), indices.presentFamily.value() };
 
@@ -527,7 +529,7 @@ private:
 
     void createImageViews() { // creates a basic image view for every image in the swap chain so that we can use them as color targets later on
         swapChainImageViews.resize(swapChainImages.size()); // resize the list to fit all of the image views we'll be creating
-        
+
         for (size_t i = 0; i < swapChainImages.size(); i++) { // iterates over all of the swap chain images
             VkImageViewCreateInfo createInfo{};
             createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -549,6 +551,94 @@ private:
                 throw std::runtime_error("Failed to create image views.");
             }
         }
+    }
+
+    void createGraphicsPipeline() {
+
+        // loading shader
+
+        auto vertShaderCode = readFile("shader/vert.spv");
+        auto fragShaderCode = readFile("shader/frag.spv");
+
+        // creating shader modules
+
+        VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
+        VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
+
+        vkDestroyShaderModule(device, fragShaderModule, nullptr);
+        vkDestroyShaderModule(device, fragShaderModule, nullptr);
+
+        // shader stage creation
+
+        VkPipelineShaderStageCreateInfo vert_shader_info = {};
+        vert_shader_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        vert_shader_info.stage = VK_SHADER_STAGE_VERTEX_BIT; // pipeline stage the shader is going to be used in (enum values for this are described in introduction chapter)
+        vert_shader_info.module = vertShaderModule; // shader module containing the code
+        vert_shader_info.pName = "main"; // function to invoke, known as the entrypoint (it's possible to combine multiple fragment shaders into a single shader module and use different entry points to differentiate between their behaviors)
+        vert_shader_info.pSpecializationInfo = nullptr; // specifies values for shader constants (if needed)
+
+        VkPipelineShaderStageCreateInfo frag_shader_info = {};
+        frag_shader_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        frag_shader_info.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        frag_shader_info.module = fragShaderModule;
+        frag_shader_info.pName = "main";
+        frag_shader_info.pSpecializationInfo = nullptr;
+
+        VkPipelineShaderStageCreateInfo shaderStages[] = { vert_shader_info, frag_shader_info };
+
+        // vertex input
+
+        VkPipelineVertexInputStateCreateInfo vertex_input_info = {}; // describes the format of the vertex data that will be passed to the vertex shader
+        vertex_input_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+        vertex_input_info.vertexBindingDescriptionCount = 0;
+        vertex_input_info.pVertexBindingDescriptions = nullptr; // points to an array of structs that describe the aforementioned details for loading vertex data
+        vertex_input_info.vertexAttributeDescriptionCount = 0;
+        vertex_input_info.pVertexAttributeDescriptions = nullptr; // points to an array of structs that describe the aforementioned details for loading vertex data
+
+        // dynamic state
+
+        std::vector<VkDynamicState> dynamicStates = {
+            VK_DYNAMIC_STATE_VIEWPORT,
+            VK_DYNAMIC_STATE_SCISSOR
+        };
+
+        VkPipelineDynamicStateCreateInfo dynamic_state_info = {}; // will cause the configuration of these values to be ignored and you will be able (and required) to specify the data at drawing time
+        dynamic_state_info.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+        dynamic_state_info.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
+        dynamic_state_info.pDynamicStates = dynamicStates.data();
+
+    }
+
+    static std::vector<char> readFile(const std::string& filename) { // reads all of the bytes from the specified file and return them in a byte array managed by std::vector
+        std::ifstream file(filename, std::ios::ate | std::ios::binary); // ate: start reading at the end of the file, binary: read the file as a binary file (avoid text transformation)
+
+        if (!file.is_open()) {
+            throw std::runtime_error("Failed to open file.");
+        }
+
+        size_t fileSize = (size_t)file.tellg();
+        std::vector<char> buffer(fileSize);
+
+        file.seekg(0);
+        file.read(buffer.data(), fileSize);
+
+        file.close();
+
+        return buffer;
+    }
+
+    VkShaderModule createShaderModule(const std::vector<char>& code) {
+        VkShaderModuleCreateInfo shader_crate_info = {};
+        shader_crate_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        shader_crate_info.codeSize = code.size();
+        shader_crate_info.pCode = reinterpret_cast<const uint32_t*>(code.data());
+
+        VkShaderModule shaderModule;
+        if (vkCreateShaderModule(device, &shader_crate_info, nullptr, &shaderModule) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create shader module.");
+        }
+
+        return shaderModule;
     }
 };
 
